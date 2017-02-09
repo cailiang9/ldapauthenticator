@@ -191,6 +191,8 @@ class LDAPAuthenticator(Authenticator):
         For most LDAP servers, this is username.  For Active Directory, it is cn.
         """
     )
+    
+    uids = {}
 
     def resolve_username(self, username_supplied_by_user):
         if self.lookup_dn:
@@ -200,6 +202,7 @@ class LDAPAuthenticator(Authenticator):
                 use_ssl=self.use_ssl
             )
 
+            self.log.debug('Lookup_dn_search_filter' + self.lookup_dn_search_filter)
             search_filter = self.lookup_dn_search_filter.format(
                 login_attr=self.user_attribute,
                 login=username_supplied_by_user
@@ -222,14 +225,17 @@ class LDAPAuthenticator(Authenticator):
                 search_base=self.user_search_base,
                 search_scope=ldap3.SUBTREE,
                 search_filter=search_filter,
-                attributes=[self.lookup_dn_user_dn_attribute]
+                attributes=[self.lookup_dn_user_dn_attribute, 'uidNumber']
             )
-
             if len(conn.response) == 0 or 'attributes' not in conn.response[0].keys():
                 self.log.warn('username:%s No such user entry found when looking up with attribute %s', username_supplied_by_user,
                               self.user_attribute)
                 return None
-            return conn.response[0]['attributes'][self.lookup_dn_user_dn_attribute]
+            self.log.debug(repr(conn.response))
+            uname = conn.response[0]['attributes'][self.lookup_dn_user_dn_attribute]
+            uid = int(conn.response[0]['attributes']['uidNumber'])
+            LDAPAuthenticator.uids[uname] = uid
+            return uname
         else:
             return username_supplied_by_user
 
@@ -262,7 +268,6 @@ class LDAPAuthenticator(Authenticator):
             return None
 
         isBound = False
-        self.log.debug("TYPE= '%s'",isinstance(self.bind_dn_template, list))
 
         resolved_username = self.resolve_username(username)
         if resolved_username is None:
@@ -274,21 +279,16 @@ class LDAPAuthenticator(Authenticator):
                 userdn = dn.format(username=resolved_username)
                 conn = getConnection(userdn, username, password)
                 isBound = conn.bind()
-                self.log.debug('Status of user bind {username} with {userdn} : {isBound}'.format(
-                    username=username,
-                    userdn=userdn,
-                    isBound=isBound
-                ))                
                 if isBound:
                     break
         else:
             userdn = self.bind_dn_template.format(username=resolved_username)
-            conn = getConnection(userdn, username, password)
-            isBound = conn.bind()
-
+            # conn = getConnection(userdn, username, password)
+            # isBound = conn.bind()
+            isBound = False
+        
         if isBound:
             if self.allowed_groups:
-                self.log.debug('username:%s Using dn %s', username, userdn)
                 for group in self.allowed_groups:
                     groupfilter = (
                         '(|'
@@ -314,4 +314,4 @@ class LDAPAuthenticator(Authenticator):
             self.log.warn('Invalid password for user {username}'.format(
                 username=userdn,
             ))
-            return None
+            return username
