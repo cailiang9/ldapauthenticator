@@ -235,6 +235,7 @@ class LDAPAuthenticator(Authenticator):
             uname = conn.response[0]['attributes'][self.lookup_dn_user_dn_attribute]
             uid = int(conn.response[0]['attributes']['uidNumber'])
             LDAPAuthenticator.uids[uname] = uid
+            conn.unbind()
             return uname
         else:
             return username_supplied_by_user
@@ -283,9 +284,8 @@ class LDAPAuthenticator(Authenticator):
                     break
         else:
             userdn = self.bind_dn_template.format(username=resolved_username)
-            # conn = getConnection(userdn, username, password)
-            # isBound = conn.bind()
-            isBound = False
+            conn = getConnection(userdn, username, password)
+            isBound = conn.bind()
         
         if isBound:
             if self.allowed_groups:
@@ -314,4 +314,4 @@ class LDAPAuthenticator(Authenticator):
             self.log.warn('Invalid password for user {username}'.format(
                 username=userdn,
             ))
-            return username
+            return None
